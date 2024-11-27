@@ -1,0 +1,151 @@
+Obtain data 
+
+Classify against the genome AND the transcriptome
+
+#Zeisel -- Seurat
+
+library(scater)
+library(scRNAseq)
+library(Seurat)
+library(R.utils)
+library(Matrix)
+library(dplyr)
+library(BiocSingular)
+library(scran)
+
+BiocManager::install("BiocSingular")
+BiocManager::install("gunzip")
+
+#--------------------------
+
+# PREPROCESSING
+
+# Unzip if needed
+unzip_counts <- gunzip("~/Desktop/Zeisel/GSE60361_series_matrix.txt.gz")
+
+# Read in counts
+zei_counts <- read.delim("~/Desktop/Zeisel/GSE60361_C1-3005-Expression.txt",
+  sep="\t", row.names = NULL, header = TRUE, check.names = FALSE)
+
+# Duplicates? 
+duplicated_genes <- duplicated(zei_counts[, 1])
+which(duplicated_genes)
+
+# DupeGene: Mar-01 (Rows 4665 and 18089) & Mar-02 (1261 and 10773)
+rows_to_merge <- c("4665", "18089") 
+rows2 <- c("1261", "10773") 
+
+# Extract rows with duplicate genes.
+rows_to_merge_data <- zei_counts[rownames(zei_counts) %in% rows_to_merge, ]
+rows_to_merge_data2 <- zei_counts[rownames(zei_counts) %in% rows2, ]
+View(rows_to_merge_data)
+View(rows_to_merge_data2)
+
+# Remove column with gene name
+r1 <- rows_to_merge_data[, -1]
+r2 <- rows_to_merge_data2[, -1]
+
+# Sum column counts
+merged_row1 <- colSums(r1, na.rm = TRUE)
+merged_row2 <- colSums(r2, na.rm = TRUE)
+
+View(merged_row1)
+head(merged_row1)
+head(merged_row2)
+
+# Remove duplicate rows to allow code to run
+zei_counts <- zei_counts[-c(4665, 18089), ]
+zei_counts <- zei_counts[-c(1261, 10773), ]
+View(zei_counts)
+
+# Make row.names column the actual row names
+rownames(zei_counts) <- zei_counts$row.names
+
+# Remove the row.names column, now our gene names are the row names
+zei_counts <- zei_counts[, -1]
+
+# Add the merged rows back in
+zei_counts <- rbind(zei_counts, merged_row1)
+zei_counts <- rbind(zei_counts, merged_row2)
+
+#Check dimensions
+ncol(zei_counts)   
+length(merged_row1)
+View(zei_counts)
+
+rm(r1)
+rm(r2)
+rm(rows_to_merge_data)
+rm(rows_to_merge_data2)
+
+View(zei_counts["Mar-01", ])
+View(zei_counts["Mar-02", ])
+
+zei_counts <- zei_counts[!rownames(zei_counts) %in% "Mar-01", ]
+
+#-------------------------- 
+# SEURAT AND ANALYSIS
+
+# Create Seurat Object 
+data.seurat <- CreateSeuratObject(counts = zei_counts)
+
+#--------------------------
+
+data.seurat <- NormalizeData(data.seurat)
+all.genes <- rownames(data.seurat)
+data.seurat <- ScaleData(data.seurat, features = all.genes)
+data.seurat <- FindVariableFeatures(data.seurat, selection.method = "vst")
+
+#--------------------------
+
+data.seurat <- RunPCA(data.seurat)
+data.seurat <- FindNeighbors(object = data.seurat, reduction = "pca", dims = 1:10)
+data.seurat <- FindClusters(object = data.seurat, resolution = 1)
+Idents(data.seurat) <- "seurat_clusters"
+data.seurat <- RunUMAP(data.seurat, dims = 1:10)
+all.markers <- FindAllMarkers(data.seurat, 
+                              only.pos = TRUE, 
+                              min.pct = 0.25, 
+                              logfc.threshold = 0.25)
+
+top.markers <- all.markers %>% 
+  group_by(cluster) %>% 
+  top_n(n = 8, wt = avg_log2FC)
+
+#--------------------------
+#IDENTITY
+data.seurat2 <- RenameIdents(object = data.seurat, 
+                             "0" = "Oligodendrocyte",
+                             "1" = "Neuron",
+                             "2" = "Neuron",
+                             "3" = "Neuron",
+                             "4" = "Neuron",
+                             "7" = "Astrocyte",
+                             "8" = "macrophage",
+                             "9" = "Oligodendrocyte",
+                             "10" = "Neuron",
+                             "11" = "Neuron",
+                             "17" = "Neuron",
+                             "18" = "macrophage",
+                             "19" = "Epyndemal") 
+
+DimPlot(object = data.seurat2, 
+        reduction = "umap", 
+        label = TRUE,
+        label.size = 3,
+        repel = TRUE)
+#--------------------------
+#--------------------------
+
+plotting(data.seurat)
+
+DimPlot(data.seurat, reduction = "tsne",  
+        label = TRUE, group.by="seurat_clusters", 
+        label.size = 6)
+# Cluster 0
+VlnPlot(data.seurat, features = c("Trf", "Hapln2"))
+
+# Cluster2
+FeaturePlot(data.seurat, features = "Gad1")
+VlnPlot(data.seurat, features = top.markers$gene)
+
