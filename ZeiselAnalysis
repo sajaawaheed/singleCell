@@ -1,8 +1,5 @@
-Obtain data 
-
-Classify against the genome AND the transcriptome
-
 #Zeisel -- Seurat
+# Performed analysis on dataset to determine cell types in neuronal mouse cells
 
 library(scater)
 library(scRNAseq)
@@ -137,15 +134,4 @@ DimPlot(object = data.seurat2,
 #--------------------------
 #--------------------------
 
-plotting(data.seurat)
-
-DimPlot(data.seurat, reduction = "tsne",  
-        label = TRUE, group.by="seurat_clusters", 
-        label.size = 6)
-# Cluster 0
-VlnPlot(data.seurat, features = c("Trf", "Hapln2"))
-
-# Cluster2
-FeaturePlot(data.seurat, features = "Gad1")
-VlnPlot(data.seurat, features = top.markers$gene)
 
